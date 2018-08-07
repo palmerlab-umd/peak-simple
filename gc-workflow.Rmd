@@ -19,9 +19,11 @@ This workbook is to convert peak area data from Peak Simple into PPMs.
 
 These are the files to read in. Make sure to have saved the GC data as CSV file without headers.
 
+Set up link between folder where the GC output data lives on your computer and this project directory with a `sym.link()`.
+
 ```{r}
-folderpath <- "../Delmarva/data/gc-peaks"
-files <- list.files(folderpath, full.names = TRUE)
+file.symlink("../Delmarva/data/gc-peaks", "gc-peaks") 
+files <- list.files("gc-peaks", full.names = TRUE)
 ```
 
 ### Calibration curve data
@@ -38,11 +40,16 @@ std_values %>% knitr::kable()
 
 ### Sample IDs
 
+Set up a symbolic link to the folder where lab data sheets are
+```{r}
+file.symlink("../Delmarva/data/gc-lab/", "gc-lab/")
+```
+
 Read in file with Lab data as `gc-samps`. Need columns: machineID, sample_type, and exetainer_ID.
 
 ```{r}
-gc_date = "01-July-2018"
-gc_samps <- read_csv(paste0("../Delmarva/data/gc-lab/Methane Lab Data - ",
+gc_date = "28-July-2018"
+gc_samps <- read_csv(paste0("gc-lab/Methane Lab Data - ",
                             gc_date, ".csv"))
 ```
 
