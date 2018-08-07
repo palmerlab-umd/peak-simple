@@ -5,6 +5,12 @@ output:
     toc: true
 ---
 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(magrittr)
+```
+
 This workbook is to convert peak area data from Peak Simple into PPMs. 
 
 ## Inputs
@@ -49,7 +55,7 @@ head(gc_samps) %>% knitr::kable()
 
 Read in one or more Peak Simple output files saved as CSVs with `read_peaksimple()` function. This adjusts rows with 0 methane readings and adds some column names for co2 and methane columns. 
 
-```{r}
+```{r, message=FALSE}
 source('read_peaksimple.R')
 gc_peaks <- read_peaksimple(files)
 ```
@@ -86,6 +92,12 @@ sample_data <- calculate_ppms(gc_data, ch4_stds, co2_stds)
 
 ```{r}
 sample_file_name <- paste0("gc-ppms_", gc_date, ".csv")
+
+if(!dir.exists(file.path("results", "ppms"))){
+  dir.create("results")
+  dir.create(file.path("results", "ppms"))
+    }
+
 write.csv(sample_data, file = file.path("results", "ppms", sample_file_name),
           row.names = FALSE)
 ```
