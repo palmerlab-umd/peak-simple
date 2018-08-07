@@ -1,0 +1,6 @@
+"sample_type","ppm_value","gas"
+"100 ppm std",98.43,"ch4"
+"1000 ppm std",994.5,"ch4"
+"4000 ppm std",4005,"ch4"
+"1000 ppm CO2 std",999.3,"co2"
+"5000 ppm CO2 std",5033,"co2"

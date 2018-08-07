@@ -1,0 +1,92 @@
+---
+title: "Process GC Data"
+output: 
+  html_notebook:
+    toc: true
+---
+
+This workbook is to convert peak area data from Peak Simple into PPMs. 
+
+## Inputs
+
+### Peak Simple files
+
+These are the files to read in. Make sure to have saved the GC data as CSV file without headers.
+
+```{r}
+folderpath <- "../Delmarva/data/gc-peaks"
+files <- list.files(folderpath, full.names = TRUE)
+```
+
+### Calibration curve data
+
+This file has the PPM values for the standards. Make sure lab sheet uses matching values in `sample_type` column. 
+
+```{r}
+std_values <- read_csv("data/std_values.csv")
+```
+
+```{r, echo = FALSE, results='asis'}
+std_values %>% knitr::kable()
+```
+
+### Sample IDs
+
+Read in file with Lab data as `gc-samps`. Need columns: machineID, sample_type, and exetainer_ID.
+
+```{r}
+gc_date = "01-July-2018"
+gc_samps <- read_csv(paste0("../Delmarva/data/gc-lab/Methane Lab Data - ",
+                            gc_date, ".csv"))
+```
+
+```{r, echo = FALSE, results='asis'}
+head(gc_samps) %>% knitr::kable()
+```
+
+
+# Read in Peak Simple data
+
+Read in one or more Peak Simple output files saved as CSVs with `read_peaksimple()` function. This adjusts rows with 0 methane readings and adds some column names for co2 and methane columns. 
+
+```{r}
+source('read_peaksimple.R')
+gc_peaks <- read_peaksimple(files)
+```
+
+```{r, echo = FALSE, results='asis'}
+head(gc_peaks) %>% knitr::kable()
+```
+
+Add GC peak info for each row of lab data. Merges based on the numeric part of the ID from the Peak Simple file. 
+
+```{r}
+gc_data <- left_join(gc_samps, gc_peaks,
+                     by = c("machineID" = "instrumentID"))
+```
+
+# Calibration curves
+
+Use `get_stds()` function to extract the calibration standards data based on sample types matching the gases in `std_values`. This function by default saves the calibration data in `data/stds/` with the corresponding machine ID range. So can use older standard curves if needed. 
+
+```{r}
+source('get_stds.R')
+ch4_stds <- get_stds(gc_data, std_values, gas = "ch4")
+co2_stds <- get_stds(gc_data, std_values, gas = "co2")
+```
+
+Calculate PPMs using a linear model with no intercept
+
+```{r}
+source('calculate_ppms.R')
+sample_data <- calculate_ppms(gc_data, ch4_stds, co2_stds)
+```
+
+# Save new data
+
+```{r}
+sample_file_name <- paste0("gc-ppms_", gc_date, ".csv")
+write.csv(sample_data, file = file.path("results", "ppms", sample_file_name),
+          row.names = FALSE)
+```
+
