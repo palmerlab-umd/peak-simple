@@ -19,12 +19,16 @@ This workbook is to convert peak area data from Peak Simple into PPMs.
 
 These are the files to read in. Make sure to have saved the GC data as CSV file without headers.
 
-Set up link between folder where the GC output data lives on your computer and this project directory with a `sym.link()`.
+Set up link between folder where the GC output data ("gc-peaks") and lab data sheets ("gc-lab") live on your computer and this project directory with a `sym.link()`. Only need to do this first time using this project. 
 
-```{r}
+```{r, eval = FALSE}
 file.symlink("../Delmarva/data/gc-peaks", "gc-peaks") 
+file.symlink("../Delmarva/data/gc-lab/", "gc-lab/")
+```
+```{r}
 files <- list.files("gc-peaks", full.names = TRUE)
 ```
+
 
 ### Calibration curve data
 
@@ -39,11 +43,6 @@ std_values %>% knitr::kable()
 ```
 
 ### Sample IDs
-
-Set up a symbolic link to the folder where lab data sheets are
-```{r}
-file.symlink("../Delmarva/data/gc-lab/", "gc-lab/")
-```
 
 Read in file with Lab data as `gc-samps`. Need columns: machineID, sample_type, and exetainer_ID.
 
@@ -94,6 +93,19 @@ Calculate PPMs using a linear model with no intercept
 source('calculate_ppms.R')
 sample_data <- calculate_ppms(gc_data, ch4_stds, co2_stds)
 ```
+```{r, eval=FALSE}
+ggplot(ch4_stds, aes(x = ppm_value, y = ch4_peak_area)) + 
+  geom_smooth(method = "lm") +
+  geom_point(size = 3, pch = 21) + theme_bw()
+
+ggplot(co2_stds, aes(x = ppm_value, y = co2_peak_area)) + 
+  geom_point() + geom_smooth(method = "lm")
+
+ggplot(ch4_stds, aes(x = ch4_peak_height, y = ch4_peak_area)) + 
+  geom_point() + geom_smooth(method = "lm")
+
+```
+
 
 # Save new data
 
