@@ -3,7 +3,16 @@ title: "Process GC Data"
 output: 
   html_notebook:
     toc: true
+editor_options: 
+  chunk_output_type: console
 ---
+
+```{r setup}
+library(readr)
+library(magrittr)
+library(purrr)
+library(ggplot2)
+```
 
 This workbook is to convert peak area data from Peak Simple into PPMs. 
 
@@ -16,6 +25,7 @@ These are the files to read in. Make sure to have saved the GC data as CSV file 
 ```{r}
 folderpath <- "../Delmarva/data/gc-peaks"
 files <- list.files(folderpath, full.names = TRUE)
+files
 ```
 
 ### Calibration curve data
@@ -34,8 +44,8 @@ std_values %>% knitr::kable()
 
 Read in file with Lab data as `gc-samps`. Need columns: machineID, sample_type, and exetainer_ID.
 
-```{r}
-gc_date = "01-July-2018"
+```{r read_in_labsheet}
+gc_date = "28-Oct-2018"
 gc_samps <- read_csv(paste0("../Delmarva/data/gc-lab/Methane Lab Data - ",
                             gc_date, ".csv"))
 ```
@@ -51,7 +61,8 @@ Read in one or more Peak Simple output files saved as CSVs with `read_peaksimple
 
 ```{r}
 source('read_peaksimple.R')
-gc_peaks <- read_peaksimple(files)
+fileid_gc_date <- grep(gc_date, files)
+gc_peaks <- read_peaksimple(files[fileid_gc_date])
 ```
 
 ```{r, echo = FALSE, results='asis'}
@@ -73,13 +84,80 @@ Use `get_stds()` function to extract the calibration standards data based on sam
 source('get_stds.R')
 ch4_stds <- get_stds(gc_data, std_values, gas = "ch4")
 co2_stds <- get_stds(gc_data, std_values, gas = "co2")
+# co2_stds <- read_csv("data/stds/co2_stds_2585-2655.csv")[1:7,]
 ```
+
+Plot CH4 standards
+```{r}
+ch4_stds %>% 
+  ggplot(aes(x = ppm_value, y = ch4_peak_area)) +
+  geom_smooth(method = "lm") +
+  geom_point(size = 3, pch = 21) + theme_bw()
+```
+
+Plot CO2 standards 
+```{r}
+co2_stds %>% 
+  ggplot(aes(x = ppm_value, y = co2_peak_area)) +
+  geom_smooth(method = "lm") +
+  geom_point(size = 3, pch = 21) + theme_bw()
+```
+
+Compare curves for beginning and ending calibration standards
+
+```{r}
+ch4_calb <- lm(ch4_peak_area ~ 0 + ppm_value, data = ch4_stds)
+ch4_rsquared <- summary(ch4_calb)$adj.r.squared
+b1 <- ch4_calb$coefficients["(Intercept)"]
+m1 <- ch4_calb$coefficients["ppm_value"]
+ch4_stderror <- summary(ch4_calb)$coefficients[,2] # std errors
+```
+
+
+```{r}
+# ch4_stds %>%
+#   mutate(calbID = c(rep("cal1", 9), rep("cal2", 5))) %>%
+#   ggplot(aes(x = ppm_value, y = ch4_peak_area, color = calbID)) +
+#   geom_point() +
+#   geom_smooth(method = "lm")
+```
+
+CO2
+
+```{r}
+# co2_stds %>%
+#   mutate(calbID = c(rep("cal1", 7), rep("cal2", 6))) %>%
+#   ggplot(aes(x = ppm_value, y = co2_peak_area, color = calbID)) +
+#   geom_point() +
+#   geom_smooth(method = "lm")
+```
+
+```{r}
+co2_calb <- lm(co2_peak_area ~ 0 + ppm_value, data = co2_stds[])
+co2_rsquared <- summary(co2_calb)$adj.r.squared
+b2 <- co2_calb$coefficients["(Intercept)"]
+m2 <- co2_calb$coefficients["ppm_value"]
+co2_stderror <- summary(co2_calb)$coefficients[,2] # std errors
+
+```
+
 
 Calculate PPMs using a linear model with no intercept
 
 ```{r}
 source('calculate_ppms.R')
-sample_data <- calculate_ppms(gc_data, ch4_stds, co2_stds)
+sample_data <- calculate_ppms(gc_data, ch4_stds = ch4_stds, co2_stds = co2_stds)
+# sample_data <- calculate_ppms(gc_data, ch4_stds = ch4_stds[1:9,], co2_stds = co2_stds[1:7,])
+# sample_data2 <- calculate_ppms(gc_data, ch4_stds = ch4_stds[10:14,], co2_stds = co2_stds[8:13,])
+```
+
+```{r}
+# sample_data[,c(1,2)] %>% rename(ch4_ppm1 = ch4_ppm) %>%
+#   left_join(sample_data2[,c(1,2)]) %>% View()
+#   ggplot(aes(x = ch4_ppm1, y = ch4_ppm)) +
+#   geom_abline(slope = 1, intercept = 0, lty = 2) +
+#   geom_point(pch = 21, size = 3) +
+#   theme_bw()
 ```
 
 # Save new data
@@ -90,3 +168,195 @@ write.csv(sample_data, file = file.path("results", "ppms", sample_file_name),
           row.names = FALSE)
 ```
 
+# Add field info about samples
+
+Read in field data information from all field sheets
+
+```{r read_in_fielddata}
+list.files("../Delmarva/data/field-sheets/")
+# sample_info_files <- c("Methane Field Data - 11-April-2018.csv",
+#                        "Methane Field Data - 12-April-2018.csv")
+# sample_info_files <- c("Methane Field Data - 2018-05-02.csv")
+sample_info_files <- list.files("../Delmarva/data/field-sheets/")
+
+# read_csv(file.path("../Delmarva/data", "field-sheets", sample_info_files[27]),
+#          col_types = list(Time = col_time()))
+
+sample_info <- sample_info_files %>%
+  map(function(x) read_csv(file.path("../Delmarva/data", "field-sheets", x),
+                           col_types = list(Time = col_time()))) %>%
+  reduce(rbind) %>% 
+  dplyr::filter(!is.na(Exetainer_ID))
+
+```
+
+```{r}
+sample_info %>%
+  filter(Exetainer_ID %in% sample_info[which(duplicated(sample_info$Exetainer_ID)),"Exetainer_ID"]$Exetainer_ID)
+```
+
+Join sample info and data
+
+```{r join_info_to_data}
+# data_path <- "results/ppms/"
+# files <- dir(data_path, pattern = "gc-ppms_") # get file names
+
+# this gets all ppm data if needed
+# sample_data <- files[] %>%
+#   map(function(x) read_csv(file.path(data_path, x))) %>%
+#   reduce(rbind)
+
+# starting with GC data and adding site info
+gc_results_db <- sample_data %>%
+  left_join(sample_info, by = c("exetainer_ID" = "Exetainer_ID")) %>%
+  dplyr::select(-Timepoint, -Notes, -Sample_description) %>%
+  rename(Exetainer_ID = exetainer_ID)
+
+# starting with site info data and adding GC data
+# gc_results_db <- sample_info %>% 
+#   left_join(sample_data, by = c("Exetainer_ID" = "exetainer_ID")) %>%
+#   dplyr::select(-Timepoint, -Notes, -Sample_description)
+
+# gc_results_db %>%
+#   mutate(mr = Exetainer_ID %in% sample_data$exetainer_ID)
+  
+# sample_data %>% left_join(sample_info, by = c("exetainer_ID" = "Exetainer_ID")) %>% View()
+
+# length(which(is.na(gc_results_db_sub$Field_sample_date)))
+
+gc_results_db_sub <- gc_results_db %>% filter(Exetainer_ID %in% sample_data$exetainer_ID)
+
+# write.csv(gc_results_db, "results/ppms_wsampleinfo/gc_results_08-09-March-2018.csv", row.names = FALSE)
+gc_results_filename <- paste0("gc_results_", gc_date, ".csv")
+write.csv(gc_results_db_sub, 
+          file = file.path("results", "ppms_wsampleinfo", gc_results_filename),
+          row.names = FALSE)
+
+```
+
+# Insert PPMs into database
+
+Use current-gas-samples.Rmd to figure out which exetainer IDs have results in the database already, based on the samplecode column in `gas_spread`. If this returns nothing then none of the samples in gc_results_db_sub have results in the database already. 
+
+```{r}
+gc_results_db_sub$Exetainer_ID[gc_results_db_sub$Exetainer_ID %in% gas_spread$samplecode]
+```
+
+Make datetime column
+
+```{r}
+gc_results_db_sub$Timestamp <- as.POSIXct(strptime(paste(gc_results_db_sub$Field_sample_date,
+                                             gc_results_db_sub$Time),
+                                       format = "%B %d, %Y %H:%M:%S"))
+```
+
+```{r}
+gc_results_db_sub$Timestamp_analysis <-
+  as.POSIXct(strptime(paste(gc_results_db_sub$gc_date,
+                                             gc_results_db_sub$gc_time),
+                                       format = "%m/%d/%Y %H:%M:%S"))
+```
+
+Will need to insert one method at a time
+
+## Soil chamber data 
+
+Make column for site codes that match sampling feature names in database
+
+```{r}
+sc_db <- gc_results_db_sub %>%
+  filter(Method == "SC") %>%
+  mutate(site_code = paste(Site, Chamber_ID))
+sc_db$Site <- gsub("SC ", "SC-", sc_db$site_code)
+```
+
+Check that all site names are in Database
+
+```{r}
+library(rodm2)
+check_samplingfeaturecodes(sc_db$Site, db)
+```
+
+```{r}
+vars <- dbGetQuery(db, "SELECT * FROM odm2.variables")
+dbmethods <- dbGetQuery(db, "SELECT * FROM odm2.methods")
+```
+
+```{r}
+names(sc_db)
+vars
+dbunits <- get_cv_terms("units")
+grep("Million", dbunits, value = TRUE)
+get_cv_terms("medium")
+vars_list <- list("Methane" = list(column = "ch4_ppm", units = "Part per Million"),
+                  "Carbon dioxide" = list(column = "co2_ppm", units = "Part per Million"))
+sc_db <- sc_db %>% dplyr::select(Timestamp, Timestamp_analysis, ch4_ppm, co2_ppm, Site, Exetainer_ID)
+sc_db$Timestamp <- as.character(sc_db$Timestamp)
+sc_db$Timestamp_analysis <- as.character(sc_db$Timestamp_analysis)
+```
+
+```{r}
+rodm2::db_insert_results_samples(db = db,
+                          datavalues = sc_db,
+                          field_method = "SC",
+                          lab_method = "GC",
+                          variables = vars_list, field_actionby = "Kelly", lab_actionby = "Kelly",
+                          sampledmedium = "Gas", site_code_col = "Site", sample_code_col = "Exetainer_ID")
+```
+
+## Headspace data
+
+```{r}
+hs_db <- gc_results_db_sub %>%
+  filter(Method == "HS") %>%
+  dplyr::select(Timestamp, Timestamp_analysis, Exetainer_ID, Site, ch4_ppm, co2_ppm)
+```
+
+Tibble datetime format is annoying and doesn't work
+
+```{r}
+hs_db$Timestamp <- as.character(hs_db$Timestamp)
+hs_db$Timestamp_analysis <- as.character(hs_db$Timestamp_analysis)
+```
+
+Check site codes against sites in database (this should return no rows)
+
+```{r}
+check_samplingfeaturecodes(hs_db$Site, db)
+```
+
+```{r}
+rodm2::db_insert_results_samples(db = db,
+                          datavalues = hs_db,
+                          field_method = "HS",
+                          lab_method = "GC",
+                          variables = vars_list, 
+                          field_actionby = "Kelly", lab_actionby = "Kelly",
+                          sampledmedium = "Liquid aqueous", 
+                          site_code_col = "Site", sample_code_col = "Exetainer_ID")
+```
+
+## Air samples
+
+```{r}
+air_db <- gc_results_db_sub %>%
+  filter(Method == "air") %>%
+  dplyr::select(Timestamp, Timestamp_analysis, Exetainer_ID, Site, ch4_ppm, co2_ppm)
+```
+
+```{r}
+air_db$Timestamp <- as.character(air_db$Timestamp)
+air_db$Timestamp_analysis <- as.character(air_db$Timestamp_analysis)
+check_samplingfeaturecodes(air_db$Site, db)
+```
+
+```{r}
+rodm2::db_insert_results_samples(db = db,
+                          datavalues = air_db,
+                          field_method = "air",
+                          lab_method = "GC",
+                          variables = vars_list, 
+                          field_actionby = "Kelly", lab_actionby = "Kelly",
+                          sampledmedium = "Air", 
+                          site_code_col = "Site", sample_code_col = "Exetainer_ID")
+```

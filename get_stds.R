@@ -9,12 +9,14 @@ get_stds <- function(gc_data, std_values, gas = "ch4", savedata = TRUE){
   
   if(gas == "ch4"){
     stds <- filter(gc_data, sample_type %in% stds_sample_types) %>%
+      filter(is.na(notes)) %>%
       left_join(std_values, by = "sample_type") %>%
       dplyr::select(machineID, ch4_retention_time, ch4_peak_area, ch4_peak_height, sample_type, ppm_value)
   }
   
   if(gas == "co2"){
     stds <- filter(gc_data, sample_type %in% stds_sample_types) %>%
+      filter(is.na(notes)) %>%
       left_join(std_values, by = "sample_type") %>%
       dplyr::select(machineID, co2_retention_time, co2_peak_area, co2_peak_height, sample_type, ppm_value)
   }
