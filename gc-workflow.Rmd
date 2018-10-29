@@ -7,7 +7,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{r setup}
+```{r setup, include=FALSE}
 library(readr)
 library(magrittr)
 library(purrr)
@@ -22,11 +22,19 @@ This workbook is to convert peak area data from Peak Simple into PPMs.
 
 These are the files to read in. Make sure to have saved the GC data as CSV file without headers.
 
+Set up link between folder where the GC output data ("gc-peaks") and lab data sheets ("gc-lab") live on your computer and this project directory with a `sym.link()`. Only need to do this first time using this project. 
+
+```{r, eval = FALSE}
+file.symlink("../Delmarva/data/gc-peaks", "gc-peaks") 
+file.symlink("../Delmarva/data/gc-lab/", "gc-lab/")
+```
+
 ```{r}
 folderpath <- "../Delmarva/data/gc-peaks"
 files <- list.files(folderpath, full.names = TRUE)
 files
 ```
+
 
 ### Calibration curve data
 
@@ -59,7 +67,7 @@ head(gc_samps) %>% knitr::kable()
 
 Read in one or more Peak Simple output files saved as CSVs with `read_peaksimple()` function. This adjusts rows with 0 methane readings and adds some column names for co2 and methane columns. 
 
-```{r}
+```{r, message=FALSE}
 source('read_peaksimple.R')
 fileid_gc_date <- grep(gc_date, files)
 gc_peaks <- read_peaksimple(files[fileid_gc_date])
@@ -159,11 +167,30 @@ sample_data <- calculate_ppms(gc_data, ch4_stds = ch4_stds, co2_stds = co2_stds)
 #   geom_point(pch = 21, size = 3) +
 #   theme_bw()
 ```
+```{r, eval=FALSE}
+ggplot(ch4_stds, aes(x = ppm_value, y = ch4_peak_area)) + 
+  geom_smooth(method = "lm") +
+  geom_point(size = 3, pch = 21) + theme_bw()
+
+ggplot(co2_stds, aes(x = ppm_value, y = co2_peak_area)) + 
+  geom_point() + geom_smooth(method = "lm")
+
+ggplot(ch4_stds, aes(x = ch4_peak_height, y = ch4_peak_area)) + 
+  geom_point() + geom_smooth(method = "lm")
+
+```
+
 
 # Save new data
 
 ```{r}
 sample_file_name <- paste0("gc-ppms_", gc_date, ".csv")
+
+if(!dir.exists(file.path("results", "ppms"))){
+  dir.create("results")
+  dir.create(file.path("results", "ppms"))
+    }
+
 write.csv(sample_data, file = file.path("results", "ppms", sample_file_name),
           row.names = FALSE)
 ```

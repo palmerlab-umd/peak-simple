@@ -22,6 +22,9 @@ get_stds <- function(gc_data, std_values, gas = "ch4", savedata = TRUE){
   }
   
   if(savedata){
+    if(!dir.exists(file.path("data", "stds"))){
+      dir.create(file.path("data", "stds"))
+    }
     write.csv(stds, file = file.path("data", "stds", std_file_name), row.names = FALSE)  
   }
 
