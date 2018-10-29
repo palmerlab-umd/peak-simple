@@ -1,0 +1,172 @@
+---
+title: "Process GC Data"
+output: 
+  html_notebook:
+    toc: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(readr)
+library(magrittr)
+library(purrr)
+library(ggplot2)
+```
+
+
+# Insert PPMs into database
+
+This starts with the data that is saved in results/ppms_wsampleinfo. 
+
+Use `current-gas-samples.Rmd` (in methane-source-area project) to figure out which exetainer IDs have results in the database already, based on the samplecode column in `gas_spread`. If this returns nothing then none of the samples in gc_results_db_sub have results in the database already. 
+
+```{r}
+# read in gc_results_db_sub if not in environment
+# ie if you didn't upload right away like you were supposed to
+list.files("../gc/results/ppms_wsampleinfo/", full.names = TRUE)
+files <- list.files("../gc/results/ppms_wsampleinfo/", full.names = TRUE)
+gc_results_db_sub <- read_csv(files[2])
+```
+
+```{r db_check_if_exists}
+gc_results_db_sub$Exetainer_ID[gc_results_db_sub$Exetainer_ID %in% gas_spread$samplecode]
+```
+
+If needed, take one out for now
+```{r}
+gc_results_db_sub <- dplyr::filter(gc_results_db_sub, Exetainer_ID != "KLH 1055")
+gc_results_db_sub <- dplyr::filter(gc_results_db_sub, Exetainer_ID != "KLH 1726")
+```
+
+Make datetime column
+
+```{r}
+gc_results_db_sub$Timestamp <- as.POSIXct(strptime(paste(gc_results_db_sub$Field_sample_date,
+                                             gc_results_db_sub$Time),
+                                       format = "%B %d, %Y %H:%M:%S"))
+```
+
+```{r}
+gc_results_db_sub$Timestamp_analysis <-
+  as.POSIXct(strptime(paste(gc_results_db_sub$gc_date,
+                                             gc_results_db_sub$gc_time),
+                                       format = "%m/%d/%Y %H:%M:%S"))
+```
+
+Will need to insert one method at a time
+
+First fix site names and dates if needed.
+
+```{r}
+unique(gc_results_db_sub$Site)
+unique(gc_results_db_sub$Field_sample_date)
+```
+
+
+## Soil chamber data 
+
+Make column for site codes that match sampling feature names in database
+
+```{r}
+sc_db <- gc_results_db_sub %>%
+  filter(Method == "SC") %>%
+  mutate(site_code = paste(Site, Chamber_ID))
+sc_db$Site <- gsub("SC ", "SC-", sc_db$site_code)
+```
+
+Check that all site names are in Database
+
+```{r}
+library(rodm2)
+check_samplingfeaturecodes(sc_db$Site, db)
+```
+
+```{r}
+vars <- dbGetQuery(db, "SELECT * FROM odm2.variables")
+dbmethods <- dbGetQuery(db, "SELECT * FROM odm2.methods")
+```
+
+```{r}
+names(sc_db)
+vars
+# dbunits <- get_cv_terms("units")
+# grep("Million", dbunits, value = TRUE)
+# get_cv_terms("medium")
+vars_list <- list("Methane" = list(column = "ch4_ppm", units = "Part per Million"),
+                  "Carbon dioxide" = list(column = "co2_ppm", units = "Part per Million"))
+sc_db <- sc_db %>% dplyr::select(Timestamp, Timestamp_analysis, ch4_ppm, co2_ppm, Site, Exetainer_ID)
+sc_db$Timestamp <- as.character(sc_db$Timestamp)
+sc_db$Timestamp_analysis <- as.character(sc_db$Timestamp_analysis)
+```
+
+```{r}
+rodm2::db_insert_results_samples(db = db,
+                          datavalues = sc_db,
+                          field_method = "SC",
+                          lab_method = "GC",
+                          variables = vars_list, field_actionby = "Kelly", lab_actionby = "Kelly",
+                          sampledmedium = "Gas", site_code_col = "Site", sample_code_col = "Exetainer_ID")
+```
+
+## Headspace data
+
+```{r}
+hs_db <- gc_results_db_sub %>%
+  filter(Method == "HS") %>%
+  dplyr::select(Timestamp, Timestamp_analysis, Exetainer_ID, Site, ch4_ppm, co2_ppm)
+```
+
+Tibble datetime format is annoying and doesn't work
+
+```{r}
+hs_db$Timestamp <- as.character(hs_db$Timestamp)
+hs_db$Timestamp_analysis <- as.character(hs_db$Timestamp_analysis)
+```
+
+Check site codes against sites in database (this should return no rows)
+
+```{r}
+check_samplingfeaturecodes(hs_db$Site, db)
+```
+
+```{r}
+rodm2::db_insert_results_samples(db = db,
+                          datavalues = hs_db,
+                          field_method = "HS",
+                          lab_method = "GC",
+                          variables = vars_list, 
+                          field_actionby = "Kelly", lab_actionby = "Kelly",
+                          sampledmedium = "Liquid aqueous", 
+                          site_code_col = "Site", sample_code_col = "Exetainer_ID")
+```
+
+## Air samples
+
+```{r}
+air_db <- gc_results_db_sub %>%
+  filter(Method == "air") %>%
+  dplyr::select(Timestamp, Timestamp_analysis, Exetainer_ID, Site, ch4_ppm, co2_ppm)
+```
+
+```{r}
+air_db$Timestamp <- as.character(air_db$Timestamp)
+air_db$Timestamp_analysis <- as.character(air_db$Timestamp_analysis)
+check_samplingfeaturecodes(air_db$Site, db)
+```
+
+```{r}
+rodm2::db_insert_results_samples(db = db,
+                          datavalues = air_db,
+                          field_method = "air",
+                          lab_method = "GC",
+                          variables = vars_list, 
+                          field_actionby = "Kelly", lab_actionby = "Kelly",
+                          sampledmedium = "Air", 
+                          site_code_col = "Site", sample_code_col = "Exetainer_ID")
+```
+
+```{r}
+dbDisconnect(db)
+```
+
